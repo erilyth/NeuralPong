@@ -5,21 +5,35 @@ import random
 from pygame.locals import *
 
 from keras.models import Sequential
+from keras.layers import Dense, Activation
 
-screen_width = 800
-screen_height = 600
+screen_width = 400
+screen_height = 300
 
-paddle_length = 120
-paddle_width = 20
-ball_radius = 10
-paddle_speed = 8
-ball_speed = 4
-max_speed = 9
+paddle_length = 60
+paddle_width = 10
+ball_radius = 5
+paddle_speed = 4
+ball_speed = 2
+max_speed = 5
 
 player1_pos = [0, 0] # Changes from 0, 0 to 0, screen_height-paddle_length
 player2_pos = [screen_width-paddle_width, 0] # Changes from 0 to screen_width-paddle_width, 0 to screen_width-paddle_width, screen_height-paddle_length
 ball_pos = [screen_width/2, screen_height/2]
 ball_velocity = [0, 0]
+
+model = Sequential()
+
+def retrieve_image(background):
+	final_img = []
+	surface_pixels = pygame.PixelArray(background)
+	for i in range(0, screen_height):
+		for j in range(0, screen_width):
+			cur = surface_pixels[j][i]
+			pixel = background.unmap_rgb(cur)
+			pixel = pixel[0:3]
+			final_img.append(pixel)
+	return final_img
 
 def initialize_ball():
 	global ball_velocity
@@ -71,8 +85,7 @@ def draw_ball(background):
 		print 'Collided!'
 	ball_velocity[0] = max(-max_speed, min(max_speed, ball_velocity[0]))
 	ball_velocity[1] = max(-max_speed, min(max_speed, ball_velocity[1]))
-	print ball_velocity[0]
-	pygame.draw.circle(background, (255, 255, 255), ball_pos, 10)
+	pygame.draw.circle(background, (255, 255, 255), ball_pos, ball_radius)
 	return background
 
 def draw_paddles(background):
@@ -105,6 +118,7 @@ def main():
 
 	while 1:
 		clock.tick(60)
+		img = retrieve_image(background)
 		for event in pygame.event.get():
 			if event.type == QUIT:
 				return
