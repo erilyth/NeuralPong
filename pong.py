@@ -4,6 +4,8 @@ import pygame
 import random
 from pygame.locals import *
 
+from keras.models import Sequential
+
 screen_width = 800
 screen_height = 600
 
@@ -12,6 +14,7 @@ paddle_width = 20
 ball_radius = 10
 paddle_speed = 8
 ball_speed = 4
+max_speed = 9
 
 player1_pos = [0, 0] # Changes from 0, 0 to 0, screen_height-paddle_length
 player2_pos = [screen_width-paddle_width, 0] # Changes from 0 to screen_width-paddle_width, 0 to screen_width-paddle_width, screen_height-paddle_length
@@ -65,8 +68,10 @@ def draw_ball(background):
 		ball_pos[0] -= ball_velocity[0]
 		ball_velocity[0] = int(round(ball_velocity[0]*(-1)*(max(0.8, gap+0.7))))
 		ball_velocity[1] = int(round(ball_velocity[1]*(max(0.9, gap+0.4))))
-		print ball_velocity[0], gap
 		print 'Collided!'
+	ball_velocity[0] = max(-max_speed, min(max_speed, ball_velocity[0]))
+	ball_velocity[1] = max(-max_speed, min(max_speed, ball_velocity[1]))
+	print ball_velocity[0]
 	pygame.draw.circle(background, (255, 255, 255), ball_pos, 10)
 	return background
 
