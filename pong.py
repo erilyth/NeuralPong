@@ -1,6 +1,7 @@
 #!/usr/bin/python
 
 import pygame
+import random
 from pygame.locals import *
 
 screen_width = 800
@@ -10,12 +11,22 @@ paddle_length = 120
 paddle_width = 20
 ball_radius = 10
 paddle_speed = 8
-ball_speed = 3
+ball_speed = 4
 
 player1_pos = [0, 0] # Changes from 0, 0 to 0, screen_height-paddle_length
 player2_pos = [screen_width-paddle_width, 0] # Changes from 0 to screen_width-paddle_width, 0 to screen_width-paddle_width, screen_height-paddle_length
 ball_pos = [screen_width/2, screen_height/2]
-ball_velocity = [ball_speed, ball_speed]
+ball_velocity = [0, 0]
+
+def initialize_ball():
+	global ball_velocity
+	ball_velocity = [random.uniform(0.7, 1.1)*ball_speed, random.uniform(0.7, 1.1)*ball_speed]
+	if random.uniform(0,1) > 0.5:
+		ball_velocity[0] *= -1
+	if random.uniform(0,1) > 0.5:
+		ball_velocity[1] *= -1
+	ball_velocity[0] = int(round(ball_velocity[0]))
+	ball_velocity[1] = int(round(ball_velocity[1]))
 
 def check_collision():
 	global ball_pos
@@ -39,7 +50,7 @@ def draw_ball(background):
 	if ball_pos[0] > screen_width - ball_radius - paddle_width/2 or ball_pos[0] < ball_radius + paddle_width/2:
 		print 'Failed!'
 		ball_pos = [screen_width/2, screen_height/2]
-		ball_velocity = [ball_speed, ball_speed]
+		initialize_ball()
 	if ball_pos[1] > screen_height - ball_radius or ball_pos[1] < ball_radius:
 		if ball_pos[1] < ball_radius:
 			ball_pos[1] = ball_radius
@@ -47,8 +58,14 @@ def draw_ball(background):
 			ball_pos[1] = screen_height - ball_radius
 		ball_velocity[1] *= -1
 	if check_collision():
+		if ball_velocity[0] < 0:
+			gap = abs(ball_pos[1] - (player1_pos[1]+paddle_length/2))*1.0 / (paddle_length / 2)
+		else:
+			gap = abs(ball_pos[1] - (player2_pos[1]+paddle_length/2))*1.0 / (paddle_length / 2)
 		ball_pos[0] -= ball_velocity[0]
-		ball_velocity[0] *= -1
+		ball_velocity[0] = int(round(ball_velocity[0]*(-1)*(max(0.8, gap+0.7))))
+		ball_velocity[1] = int(round(ball_velocity[1]*(max(0.9, gap+0.4))))
+		print ball_velocity[0], gap
 		print 'Collided!'
 	pygame.draw.circle(background, (255, 255, 255), ball_pos, 10)
 	return background
@@ -78,6 +95,8 @@ def main():
 
 	screen.blit(background, (0, 0))
 	pygame.display.flip()
+
+	initialize_ball()
 
 	while 1:
 		clock.tick(60)
