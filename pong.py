@@ -3,6 +3,7 @@
 import pygame
 import random
 from pygame.locals import *
+import numpy as np
 
 from keras.models import Sequential
 from keras.layers import Dense, Activation
@@ -21,11 +22,24 @@ player1_pos = [0, 0] # Changes from 0, 0 to 0, screen_height-paddle_length
 player2_pos = [screen_width-paddle_width, 0] # Changes from 0 to screen_width-paddle_width, 0 to screen_width-paddle_width, screen_height-paddle_length
 ball_pos = [screen_width/2, screen_height/2]
 ball_velocity = [0, 0]
+final_img = np.zeros((screen_height, screen_width))
 
 model = Sequential()
 
 def retrieve_image(background):
-	final_img = []
+	global final_img
+	final_img = np.zeros((screen_height, screen_width))
+	for i in range(-ball_radius, ball_radius+1):
+		for j in range(-ball_radius, ball_radius+1):
+			if i * i + j * j <= ball_radius * ball_radius:
+				if ball_pos[0] + i < screen_width and ball_pos[0] + i >= 0 and ball_pos[1] + j < screen_height and ball_pos[1] + j >= 0:
+					final_img[ball_pos[1]+j][ball_pos[0]+i] = 1
+	for i in range(paddle_width):
+		for j in range(paddle_length):
+			final_img[player1_pos[1]+j][player1_pos[0]+i] = 1
+			final_img[player2_pos[1]+j][player2_pos[0]+i] = 1
+	"""
+	# An alternative approach using pixelArrays but its quite slow
 	surface_pixels = pygame.PixelArray(background)
 	for i in range(0, screen_height):
 		for j in range(0, screen_width):
@@ -33,7 +47,7 @@ def retrieve_image(background):
 			pixel = background.unmap_rgb(cur)
 			pixel = pixel[0:3]
 			final_img.append(pixel)
-	return final_img
+	"""
 
 def initialize_ball():
 	global ball_velocity
@@ -118,7 +132,9 @@ def main():
 
 	while 1:
 		clock.tick(60)
-		img = retrieve_image(background)
+		global final_img
+		retrieve_image(background)
+		print final_img
 		for event in pygame.event.get():
 			if event.type == QUIT:
 				return
