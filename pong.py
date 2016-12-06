@@ -24,7 +24,20 @@ ball_pos = [screen_width/2, screen_height/2]
 ball_velocity = [0, 0]
 final_img = np.zeros((screen_height, screen_width))
 
+# Define a neural network that will be used to predict the output
+
+skip_frames = 1
+cur_frame = 0
+total_inputs = []
+total_class_outputs = []
+
 model = Sequential()
+model.add(Dense(output_dim=300, input_dim=screen_width*screen_height))
+model.add(Activation("tanh"))
+model.add(Dense(output_dim=3))
+model.add(Activation("softmax"))
+
+model.compile(loss="categorical_crossentropy", optimizer="sgd", metrics=["accuracy"])
 
 def retrieve_image(background):
 	global final_img
@@ -79,7 +92,26 @@ def draw_ball(background):
 	ball_pos[0] += ball_velocity[0]
 	ball_pos[1] += ball_velocity[1]
 	if ball_pos[0] > screen_width - ball_radius - paddle_width/2 or ball_pos[0] < ball_radius + paddle_width/2:
-		print 'Failed!'
+		global total_inputs
+		global total_outputs
+		if ball_pos[0] > screen_width - ball_radius - paddle_width/2:
+			# Neural net won. Perform updates
+			for ix in range(len(total_inputs)):
+				cur_inp = np.atleast_2d(total_inputs[ix])
+				act_out = np.atleast_2d(total_class_outputs[ix])
+				model.fit(cur_inp, act_out, nb_epoch=1, batch_size=1)
+		else:
+			# Neural net lost. Perform updates
+			for ix in range(len(total_inputs)):
+				cur_inp = np.atleast_2d(total_inputs[ix])
+				cur_out = [0, 0, 0]
+				for iy in range(3):
+					if total_class_outputs[ix][iy] == 1:
+						cur_out[iy] = 0
+					else:
+						cur_out[iy] = 0.5
+				act_out = np.atleast_2d(cur_out)
+				model.fit(cur_inp, act_out, nb_epoch=1, batch_size=1)
 		ball_pos = [screen_width/2, screen_height/2]
 		initialize_ball()
 	if ball_pos[1] > screen_height - ball_radius or ball_pos[1] < ball_radius:
@@ -129,16 +161,38 @@ def main():
 	pygame.display.flip()
 
 	initialize_ball()
+	global cur_frame
+	global total_inputs
+	global total_outputs
 
 	while 1:
 		clock.tick(60)
-		global final_img
-		retrieve_image(background)
-		print final_img
+		if cur_frame == 0:
+			global final_img
+			retrieve_image(background)
+			neural_input = final_img.flatten()
+			neural_input = np.atleast_2d(neural_input)
+			total_inputs.append(neural_input)
+			output_prob = model.predict(neural_input,1)
+			best = np.amax(output_prob)
+			if output_prob[0] == best:
+				total_class_outputs.append(np.asarray([1,0,0]))
+				player1_pos[1] -= paddle_speed
+				if player1_pos[1] < 0:
+					player1_pos[1] = 1
+			elif output_prob[2] == best:
+				total_class_outputs.append(np.asarray([0,0,1]))
+				player1_pos[1] += paddle_speed
+				if player1_pos[1] > screen_height-paddle_length:
+					player1_pos[1] = screen_height-paddle_length
+			else:
+				total_class_outputs.append(np.asarray([0,1,0]))
+		cur_frame = (cur_frame+1)%skip_frames
 		for event in pygame.event.get():
 			if event.type == QUIT:
 				return
 		keys = pygame.key.get_pressed()
+		"""
 		if keys[K_w]:
 			player1_pos[1] -= paddle_speed
 			if player1_pos[1] < 0:
@@ -147,6 +201,7 @@ def main():
 			player1_pos[1] += paddle_speed
 			if player1_pos[1] > screen_height-paddle_length:
 				player1_pos[1] = screen_height-paddle_length
+		"""
 		if keys[K_DOWN]:
 			player2_pos[1] += paddle_speed
 			if player2_pos[1] > screen_height-paddle_length:
@@ -155,6 +210,10 @@ def main():
 			player2_pos[1] -= paddle_speed
 			if player2_pos[1] < 0:
 				player2_pos[1] = 0
+		if ball_pos[1] < player2_pos[1]:
+			player2_pos[1] -= paddle_speed
+		elif ball_pos[1] > player2_pos[1]:
+			player2_pos[1] += paddle_speed
 		background.fill((0, 0, 0))
 		background_new = draw_paddles(background)
 		background_new = draw_ball(background_new)
