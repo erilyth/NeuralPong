@@ -18,8 +18,8 @@ paddle_speed = 4
 ball_speed = 2
 max_speed = 5
 
-player1_pos = [0, 0] # Changes from 0, 0 to 0, screen_height-paddle_length
-player2_pos = [screen_width-paddle_width, 0] # Changes from 0 to screen_width-paddle_width, 0 to screen_width-paddle_width, screen_height-paddle_length
+player1_pos = [0, 0] # Changes from 0, 0 to 0, screen_height-paddle_length-1
+player2_pos = [screen_width-paddle_width-1, 0] # Changes from 0 to screen_width-paddle_width, 0 to screen_width-paddle_width, screen_height-paddle_length-1
 ball_pos = [screen_width/2, screen_height/2]
 ball_velocity = [0, 0]
 final_img = np.zeros((screen_height, screen_width))
@@ -112,6 +112,8 @@ def draw_ball(background):
 						cur_out[iy] = 0.5
 				act_out = np.atleast_2d(cur_out)
 				model.fit(cur_inp, act_out, nb_epoch=1, batch_size=1)
+		# Save the model
+		model.save_weights("model.keras")
 		ball_pos = [screen_width/2, screen_height/2]
 		initialize_ball()
 	if ball_pos[1] > screen_height - ball_radius or ball_pos[1] < ball_radius:
@@ -173,18 +175,18 @@ def main():
 			neural_input = final_img.flatten()
 			neural_input = np.atleast_2d(neural_input)
 			total_inputs.append(neural_input)
-			output_prob = model.predict(neural_input,1)
+			output_prob = model.predict(neural_input,1)[0]
 			best = np.amax(output_prob)
 			if output_prob[0] == best:
 				total_class_outputs.append(np.asarray([1,0,0]))
 				player1_pos[1] -= paddle_speed
 				if player1_pos[1] < 0:
-					player1_pos[1] = 1
+					player1_pos[1] = 0
 			elif output_prob[2] == best:
 				total_class_outputs.append(np.asarray([0,0,1]))
 				player1_pos[1] += paddle_speed
-				if player1_pos[1] > screen_height-paddle_length:
-					player1_pos[1] = screen_height-paddle_length
+				if player1_pos[1] >= screen_height-paddle_length:
+					player1_pos[1] = screen_height-paddle_length-1
 			else:
 				total_class_outputs.append(np.asarray([0,1,0]))
 		cur_frame = (cur_frame+1)%skip_frames
@@ -204,16 +206,20 @@ def main():
 		"""
 		if keys[K_DOWN]:
 			player2_pos[1] += paddle_speed
-			if player2_pos[1] > screen_height-paddle_length:
-				player2_pos[1] = screen_height-paddle_length
+			if player2_pos[1] >= screen_height-paddle_length:
+				player2_pos[1] = screen_height-paddle_length-1
 		if keys[K_UP]:
 			player2_pos[1] -= paddle_speed
 			if player2_pos[1] < 0:
 				player2_pos[1] = 0
-		if ball_pos[1] < player2_pos[1]:
+		if ball_pos[1] < player2_pos[1]+paddle_length/2-paddle_speed:
 			player2_pos[1] -= paddle_speed
-		elif ball_pos[1] > player2_pos[1]:
+			if player2_pos[1] < 0:
+				player2_pos[1] = 0
+		elif ball_pos[1] > player2_pos[1]+paddle_length/2+paddle_speed:
 			player2_pos[1] += paddle_speed
+			if player2_pos[1] >= screen_height-paddle_length:
+				player2_pos[1] = screen_height-paddle_length-1 
 		background.fill((0, 0, 0))
 		background_new = draw_paddles(background)
 		background_new = draw_ball(background_new)
