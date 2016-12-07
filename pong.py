@@ -8,6 +8,7 @@ import numpy as np
 
 from keras.models import Sequential
 from keras.layers import Dense, Activation
+from keras.optimizers import SGD
 
 screen_width = 400
 screen_height = 300
@@ -19,8 +20,8 @@ paddle_speed = 4
 ball_speed = 2
 max_speed = 5
 
-player1_pos = [0, 0] # Changes from 0, 0 to 0, screen_height-paddle_length-1
-player2_pos = [screen_width-paddle_width, 0] # Changes from 0 to screen_width-paddle_width, 0 to screen_width-paddle_width, screen_height-paddle_length-1
+player1_pos = [0, screen_height/2-paddle_length/2] # Changes from 0, 0 to 0, screen_height-paddle_length-1
+player2_pos = [screen_width-paddle_width, screen_height/2-paddle_length/2] # Changes from 0 to screen_width-paddle_width, 0 to screen_width-paddle_width, screen_height-paddle_length-1
 ball_pos = [screen_width/2, screen_height/2]
 ball_velocity = [0, 0]
 final_img = np.zeros((screen_height, screen_width))
@@ -39,7 +40,8 @@ model.add(Activation("tanh"))
 model.add(Dense(output_dim=3))
 model.add(Activation("softmax"))
 
-model.compile(loss="categorical_crossentropy", optimizer="sgd", metrics=["accuracy"])
+sgd = SGD(lr=0.01, decay=1e-6, momentum=0.9, nesterov=True)
+model.compile(loss="categorical_crossentropy", optimizer=sgd, metrics=["accuracy"])
 
 model.load_weights("model.keras")
 
@@ -129,6 +131,8 @@ def draw_ball(background):
         total_class_outputs = []
         model.save_weights("model.keras")
         ball_pos = [screen_width/2, screen_height/2]
+        player1_pos = [0, screen_height / 2 - paddle_length / 2]  # Changes from 0, 0 to 0, screen_height-paddle_length-1
+        player2_pos = [screen_width - paddle_width, screen_height / 2 - paddle_length / 2]  # Changes from 0 to screen_width-paddle_width, 0 to screen_width-paddle_width, screen_height-paddle_length-1
         initialize_ball()
     if ball_pos[1] > screen_height - ball_radius or ball_pos[1] < ball_radius:
         if ball_pos[1] < ball_radius:
