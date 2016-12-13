@@ -18,15 +18,15 @@ paddle_length2 = 300
 paddle_width = 10
 ball_radius = 5
 paddle_speed = 4
-ball_speed = 2
+ball_speed = 3
 max_speed = 5
 
 player1_pos = [0, screen_height/2-paddle_length/2] # Changes from 0, 0 to 0, screen_height-paddle_length-1
 ball_pos = [screen_width/2, screen_height/2]
 ball_velocity = [0, 0]
-final_img = np.zeros((screen_height, screen_width))
-old_img = np.zeros((screen_height, screen_width))
-diff_img = np.zeros((screen_height, screen_width))
+final_img = np.zeros((80, 80))
+old_img = np.zeros((80, 80))
+diff_img = np.zeros((80, 80))
 
 # Define a neural network that will be used to predict the output
 
@@ -35,9 +35,9 @@ total_class_outputs = []
 max_size = 100000
 
 model = Sequential()
-model.add(Dense(output_dim=300, input_dim=screen_width*screen_height))
+model.add(Dense(output_dim=150, input_dim=80*80))
 model.add(Activation("tanh"))
-model.add(Dense(output_dim=3))
+model.add(Dense(output_dim=2))
 model.add(Activation("softmax"))
 
 sgd = SGD(lr=0.01, decay=1e-6, momentum=0.9, nesterov=True)
@@ -50,7 +50,7 @@ def retrieve_image(background):
     global old_img
     global diff_img
     old_img = final_img
-    final_img = np.zeros((screen_height, screen_width))
+    """
     for i in range(-ball_radius, ball_radius+1):
         for j in range(-ball_radius, ball_radius+1):
             if i * i + j * j <= ball_radius * ball_radius:
@@ -59,20 +59,23 @@ def retrieve_image(background):
     for i in range(paddle_width):
         for j in range(paddle_length):
             final_img[int(player1_pos[1])+j][int(player1_pos[0])+i] = 1
-    diff_img = final_img - old_img
+    """
     # Gives us an RGB image
-    # final_img = pygame.surfarray.array3d(pygame.display.get_surface())
-    # print(final_img)
+    final_img = pygame.surfarray.array3d(pygame.transform.scale(pygame.display.get_surface(), (80, 80)))
+    avgs = [[(r * 0.33 + g * 0.33 + b * 0.33) for (r, g, b) in col] for col in final_img]
+    final_img = np.array([[avg for avg in col] for col in avgs])
+    # This is to visualize the array and make sure it works
+    #background.blit(pygame.surfarray.make_surface(diff_img), (200,200))
+    diff_img = final_img - old_img
     """
-    # An alternative approach using pixelArrays but its quite slow
-    surface_pixels = pygame.PixelArray(background)
-    for i in range(0, screen_height):
-        for j in range(0, screen_width):
-            cur = surface_pixels[j][i]
-            pixel = background.unmap_rgb(cur)
-            pixel = pixel[0:3]
-            final_img.append(pixel)
+    for i in range(80):
+        for j in range(80):
+            sys.stdout.write(str(diff_img[i][j]) + " ")
+        print("")
     """
+    print(diff_img)
+    return background
+
 
 def initialize_ball():
     global ball_velocity
@@ -107,12 +110,12 @@ def train_network(status):
         # Neural net lost
         for ix in range(len(total_inputs)):
             cur_inp = np.atleast_2d(total_inputs[ix])
-            cur_out = [0, 0, 0]
-            for iy in range(3):
+            cur_out = [0, 0]
+            for iy in range(2):
                 if total_class_outputs[ix][iy] == 1:
                     cur_out[iy] = 0
                 else:
-                    cur_out[iy] = 0.5
+                    cur_out[iy] = 1
             act_out = np.atleast_2d(cur_out)
             model.fit(cur_inp, act_out, nb_epoch=1, batch_size=1)
     print("Done updating weights!")
@@ -146,12 +149,12 @@ def draw_ball(background):
             ball_pos[1] = screen_height - ball_radius
         ball_velocity[1] *= -1
     if ball_pos[0] > screen_width - ball_radius:
-        ball_pos[0] = screen_width - ball_radius;
+        ball_pos[0] = screen_width - ball_radius
         ball_velocity[0] *= -1
     if check_collision():
         print('Collided!')
         gap = abs(ball_pos[1] - (player1_pos[1]+paddle_length/2))*1.0 / (paddle_length / 2)
-        ball_velocity[0] = int(round(ball_velocity[0] * (-1) * (max(0.8, gap + 0.7))))
+        ball_velocity[0] = int(round(ball_velocity[0] * (-1) * (max(1, gap + 0.3))))
         ball_velocity[1] = int(round(ball_velocity[1] * (max(0.9, gap + 0.4))))
         ball_pos[0] += ball_velocity[0]
         train_network(True)
@@ -191,7 +194,7 @@ def main():
     pygame.display.flip()
 
     initialize_ball()
-    retrieve_image(background)
+    background = retrieve_image(background)
     global cur_frame
     global total_inputs
     global total_class_outputs
@@ -201,28 +204,26 @@ def main():
         background.fill((0, 0, 0))
         background_new = draw_paddles(background)
         background_new = draw_ball(background_new)
-        screen.blit(background_new, (0, 0))
         pygame.display.flip()
         if len(total_inputs)<max_size:
             global diff_img
-            retrieve_image(background)
+            background_new = retrieve_image(background_new)
             neural_input = diff_img.flatten()
             neural_input = np.atleast_2d(neural_input)
             total_inputs.append(neural_input)
             output_prob = model.predict(neural_input,1)[0]
             best = np.amax(output_prob)
             if output_prob[0] == best:
-                total_class_outputs.append(np.asarray([1,0,0]))
+                total_class_outputs.append(np.asarray([1,0]))
                 player1_pos[1] -= paddle_speed
                 if player1_pos[1] < 0:
                     player1_pos[1] = 0
-            elif output_prob[2] == best:
-                total_class_outputs.append(np.asarray([0,0,1]))
+            elif output_prob[1] == best:
+                total_class_outputs.append(np.asarray([0,1]))
                 player1_pos[1] += paddle_speed
                 if player1_pos[1] >= screen_height-paddle_length:
                     player1_pos[1] = screen_height-paddle_length-1
-            else:
-                total_class_outputs.append(np.asarray([0,1,0]))
+        screen.blit(background_new, (0, 0))
         for event in pygame.event.get():
             if event.type == QUIT:
                 return
