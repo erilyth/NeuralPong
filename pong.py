@@ -7,8 +7,8 @@ from pygame.locals import *
 import numpy as np
 
 from keras.models import Sequential
-from keras.layers import Dense, Activation
-from keras.optimizers import SGD
+from keras.layers import Dense, Activation, Convolution2D, Flatten
+from keras.optimizers import Adam
 
 screen_width = 400
 screen_height = 300
@@ -21,7 +21,9 @@ paddle_speed = 4
 ball_speed = 3
 max_speed = 5
 gamma = 0.95
-epsilon = 0.3 # Random probability which drops as learning progresses
+epsilon = 0.25 # Random probability which drops as learning progresses
+
+total_loss_cur = 0.0
 
 player1_pos = [0, screen_height/2-paddle_length/2] # Changes from 0, 0 to 0, screen_height-paddle_length-1
 ball_pos = [screen_width/2, screen_height/2]
@@ -38,15 +40,21 @@ replay_memory = []
 max_size = 5000
 
 model = Sequential()
-model.add(Dense(output_dim=200, input_dim=80*80))
-model.add(Activation("tanh"))
-model.add(Dense(output_dim=2))
-model.add(Activation("softmax"))
+model.add(Convolution2D(32, 5, 5, subsample=(1,1), border_mode='same',input_shape=(1,80,80)))
+model.add(Activation('relu'))
+model.add(Convolution2D(64, 5, 5, subsample=(1,1), border_mode='same'))
+model.add(Activation('relu'))
+model.add(Convolution2D(64, 3, 3, subsample=(1,1), border_mode='same'))
+model.add(Activation('relu'))
+model.add(Flatten())
+model.add(Dense(256))
+model.add(Activation('relu'))
+model.add(Dense(2))
 
-sgd = SGD(lr=0.01, decay=1e-6, momentum=0.9, nesterov=True)
-model.compile(loss="categorical_crossentropy", optimizer=sgd, metrics=["accuracy"])
+adam = Adam(lr=1e-6)
+model.compile(loss='mse', optimizer=adam)
 
-model.load_weights("model.keras")
+model.load_weights("model_conv.keras")
 
 def retrieve_image(background):
     global final_img
@@ -100,24 +108,28 @@ def check_collision():
     return False
 
 def train_network():
+    global total_loss_cur
     global replay_memory
+    total_loss_cur = 0
     for ix in range(len(replay_memory)-1): #Ignore the terminal state
         state_t = replay_memory[ix][0]
         state_t1 = replay_memory[ix][2]
         action_t = replay_memory[ix][1]
         reward_t = replay_memory[ix][3]
-        target_t = model.predict(state_t)[0]
-        Q_pred_t1 = model.predict(state_t1)[0]
+        target_t = model.predict(state_t,1)[0]
+        Q_pred_t1 = model.predict(state_t1,1)[0]
         if action_t[0] == 1:
             target_t[0] = reward_t + gamma * np.amax(Q_pred_t1)
         else:
             target_t[1] = reward_t + gamma * np.amax(Q_pred_t1)
-        model.fit(state_t, np.atleast_2d(target_t), nb_epoch=1, batch_size=1)
+        hist = model.fit(state_t, np.atleast_2d(target_t), nb_epoch=1, batch_size=1)
+        total_loss_cur += hist.history['loss'][0]
+    print(total_loss_cur/len(replay_memory))
     print("Done updating weights!")
     # Save the model
     global epsilon
     epsilon = epsilon * 0.97
-    model.save_weights("model.keras")
+    model.save_weights("model_conv.keras")
 
 def reset_game():
     global ball_pos
@@ -203,8 +215,9 @@ def main():
         if len(replay_memory)<max_size:
             global diff_img
             background_new = retrieve_image(background_new)
-            current_state = diff_img.flatten()
-            current_state = np.atleast_2d(current_state)
+            current_state = diff_img
+            current_state = np.expand_dims(current_state, axis=0)
+            current_state = np.expand_dims(current_state, axis=0)
             actions_possible = model.predict(current_state,1)[0]
             action_chosen = np.asarray([0, 0])
             best = np.amax(actions_possible)
