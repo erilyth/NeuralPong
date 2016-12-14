@@ -21,6 +21,7 @@ paddle_speed = 4
 ball_speed = 3
 max_speed = 5
 gamma = 0.95
+epsilon = 0.3 # Random probability which drops as learning progresses
 
 player1_pos = [0, screen_height/2-paddle_length/2] # Changes from 0, 0 to 0, screen_height-paddle_length-1
 ball_pos = [screen_width/2, screen_height/2]
@@ -114,6 +115,8 @@ def train_network():
         model.fit(state_t, np.atleast_2d(target_t), nb_epoch=1, batch_size=1)
     print("Done updating weights!")
     # Save the model
+    global epsilon
+    epsilon = epsilon * 0.97
     model.save_weights("model.keras")
 
 def reset_game():
@@ -188,6 +191,7 @@ def main():
     initialize_ball()
     background = retrieve_image(background)
     global cur_frame
+    global epsilon
 
     while 1:
         clock.tick(60)
@@ -204,6 +208,10 @@ def main():
             actions_possible = model.predict(current_state,1)[0]
             action_chosen = np.asarray([0, 0])
             best = np.amax(actions_possible)
+            if random.uniform(0, 1) < epsilon:
+                action_idx = random.randrange(2)
+                actions_possible[action_idx] = best
+                actions_possible[1-action_idx] = 0
             if actions_possible[0] == best:
                 action_chosen = np.asarray([1, 0])
                 player1_pos[1] -= paddle_speed
