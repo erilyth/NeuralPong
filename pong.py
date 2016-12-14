@@ -20,6 +20,7 @@ ball_radius = 5
 paddle_speed = 4
 ball_speed = 3
 max_speed = 5
+gamma = 0.95
 
 player1_pos = [0, screen_height/2-paddle_length/2] # Changes from 0, 0 to 0, screen_height-paddle_length-1
 ball_pos = [screen_width/2, screen_height/2]
@@ -28,14 +29,15 @@ final_img = np.zeros((80, 80))
 old_img = np.zeros((80, 80))
 diff_img = np.zeros((80, 80))
 
+reward_cur = 0.1
+
 # Define a neural network that will be used to predict the output
 
-total_inputs = []
-total_class_outputs = []
-max_size = 100000
+replay_memory = []
+max_size = 5000
 
 model = Sequential()
-model.add(Dense(output_dim=150, input_dim=80*80))
+model.add(Dense(output_dim=200, input_dim=80*80))
 model.add(Activation("tanh"))
 model.add(Dense(output_dim=2))
 model.add(Activation("softmax"))
@@ -73,9 +75,8 @@ def retrieve_image(background):
             sys.stdout.write(str(diff_img[i][j]) + " ")
         print("")
     """
-    print(diff_img)
+    #print(diff_img)
     return background
-
 
 def initialize_ball():
     global ball_velocity
@@ -97,27 +98,20 @@ def check_collision():
         return True
     return False
 
-def train_network(status):
-    global total_inputs
-    global total_class_outputs
-    if status == True:
-        # Neural net won
-        for ix in range(len(total_inputs)):
-            cur_inp = np.atleast_2d(total_inputs[ix])
-            act_out = np.atleast_2d(total_class_outputs[ix])
-            model.fit(cur_inp, act_out, nb_epoch=1, batch_size=1)
-    else:
-        # Neural net lost
-        for ix in range(len(total_inputs)):
-            cur_inp = np.atleast_2d(total_inputs[ix])
-            cur_out = [0, 0]
-            for iy in range(2):
-                if total_class_outputs[ix][iy] == 1:
-                    cur_out[iy] = 0
-                else:
-                    cur_out[iy] = 1
-            act_out = np.atleast_2d(cur_out)
-            model.fit(cur_inp, act_out, nb_epoch=1, batch_size=1)
+def train_network():
+    global replay_memory
+    for ix in range(len(replay_memory)-1): #Ignore the terminal state
+        state_t = replay_memory[ix][0]
+        state_t1 = replay_memory[ix][2]
+        action_t = replay_memory[ix][1]
+        reward_t = replay_memory[ix][3]
+        target_t = model.predict(state_t)[0]
+        Q_pred_t1 = model.predict(state_t1)[0]
+        if action_t[0] == 1:
+            target_t[0] = reward_t + gamma * np.amax(Q_pred_t1)
+        else:
+            target_t[1] = reward_t + gamma * np.amax(Q_pred_t1)
+        model.fit(state_t, np.atleast_2d(target_t), nb_epoch=1, batch_size=1)
     print("Done updating weights!")
     # Save the model
     model.save_weights("model.keras")
@@ -125,22 +119,23 @@ def train_network(status):
 def reset_game():
     global ball_pos
     global player1_pos
-    global total_class_outputs
-    global total_inputs
     ball_pos = [screen_width / 2, screen_height / 2]
     player1_pos = [0, screen_height / 2 - paddle_length / 2]  # Changes from 0, 0 to 0, screen_height-paddle_length-1
     initialize_ball()
-    total_inputs = []
-    total_class_outputs = []
 
 def draw_ball(background):
     global ball_pos
     global ball_velocity
     global player1_pos
+    global reward_cur
+    global replay_memory
     ball_pos[0] += ball_velocity[0]
     ball_pos[1] += ball_velocity[1]
+    reward_cur = 0.1
     if ball_pos[0] < ball_radius + paddle_width/2:
-        train_network(False)
+        reward_cur = -1
+        train_network()
+        replay_memory = []
         reset_game()
     if ball_pos[1] > screen_height - ball_radius or ball_pos[1] < ball_radius:
         if ball_pos[1] < ball_radius:
@@ -153,15 +148,11 @@ def draw_ball(background):
         ball_velocity[0] *= -1
     if check_collision():
         print('Collided!')
+        reward_cur = 1
         gap = abs(ball_pos[1] - (player1_pos[1]+paddle_length/2))*1.0 / (paddle_length / 2)
         ball_velocity[0] = int(round(ball_velocity[0] * (-1) * (max(1, gap + 0.3))))
         ball_velocity[1] = int(round(ball_velocity[1] * (max(0.9, gap + 0.4))))
         ball_pos[0] += ball_velocity[0]
-        train_network(True)
-        global total_inputs
-        global total_class_outputs
-        total_inputs = []
-        total_class_outputs = []
     ball_velocity[0] = max(-max_speed, min(max_speed, ball_velocity[0]))
     ball_velocity[1] = max(-max_speed, min(max_speed, ball_velocity[1]))
     ball_pos[0] = round(ball_pos[0])
@@ -180,6 +171,7 @@ def main():
     global ball_pos
     global ball_velocity
     global player1_pos
+    global replay_memory
     clock = pygame.time.Clock()
     pygame.init()
     screen = pygame.display.set_mode((screen_width, screen_height))
@@ -196,33 +188,42 @@ def main():
     initialize_ball()
     background = retrieve_image(background)
     global cur_frame
-    global total_inputs
-    global total_class_outputs
 
     while 1:
         clock.tick(60)
         background.fill((0, 0, 0))
+        # Reward is calculated in these functions
         background_new = draw_paddles(background)
         background_new = draw_ball(background_new)
         pygame.display.flip()
-        if len(total_inputs)<max_size:
+        if len(replay_memory)<max_size:
             global diff_img
             background_new = retrieve_image(background_new)
-            neural_input = diff_img.flatten()
-            neural_input = np.atleast_2d(neural_input)
-            total_inputs.append(neural_input)
-            output_prob = model.predict(neural_input,1)[0]
-            best = np.amax(output_prob)
-            if output_prob[0] == best:
-                total_class_outputs.append(np.asarray([1,0]))
+            current_state = diff_img.flatten()
+            current_state = np.atleast_2d(current_state)
+            actions_possible = model.predict(current_state,1)[0]
+            action_chosen = np.asarray([0, 0])
+            best = np.amax(actions_possible)
+            if actions_possible[0] == best:
+                action_chosen = np.asarray([1, 0])
                 player1_pos[1] -= paddle_speed
                 if player1_pos[1] < 0:
                     player1_pos[1] = 0
-            elif output_prob[1] == best:
-                total_class_outputs.append(np.asarray([0,1]))
+            elif actions_possible[1] == best:
+                action_chosen = np.asarray([0, 1])
                 player1_pos[1] += paddle_speed
                 if player1_pos[1] >= screen_height-paddle_length:
                     player1_pos[1] = screen_height-paddle_length-1
+            if len(replay_memory) != 0:
+                replay_memory[len(replay_memory)-1][2] = current_state
+                replay_memory[len(replay_memory)-1][3] = reward_cur
+            reward_dummy = 0
+            next_state_dummy = current_state
+            # The next state and reward are just placeholders for now and will be updated in the next iteration
+            replay_memory.append([current_state, action_chosen, next_state_dummy, reward_dummy])
+        else:
+            train_network()
+            replay_memory = []
         screen.blit(background_new, (0, 0))
         for event in pygame.event.get():
             if event.type == QUIT:
